@@ -716,14 +716,31 @@ class GoDebugSession extends DebugSession {
 		let vari = this._variableHandles.get(args.variablesReference);
 		let variables;
 		if (vari.kind === GoReflectKind.Array || vari.kind === GoReflectKind.Slice) {
-			variables = vari.children.map((v, i) => {
-				let { result, variablesReference } = this.convertDebugVariableToProtocolVariable(v, i);
-				return {
+			variables = [];
+			let stringVal = '';
+			if (vari.children.length > 0) {
+				// All array/slice elements are assumed to be of the same kind
+				let childKind = vari.children[0].kind;
+				if (childKind === GoReflectKind.Uint || childKind === GoReflectKind.Uint8 || childKind === GoReflectKind.Int32) {
+					for (let i = 0; i < vari.children.length; i++) {
+						stringVal += String.fromCharCode(parseInt(vari.children[i].value));
+					}
+					variables.push({
+						name: 'string value',
+						value: stringVal,
+						variablesReference: null
+					});
+				}
+			}
+
+			for (let i = 0; i < vari.children.length; i++) {
+				let { result, variablesReference } = this.convertDebugVariableToProtocolVariable(vari.children[i], i);
+				variables.push({
 					name: '[' + i + ']',
 					value: result,
 					variablesReference
-				};
-			});
+				});
+			}
 		} else if (vari.kind === GoReflectKind.Map) {
 			variables = [];
 			for (let i = 0; i < vari.children.length; i += 2) {
