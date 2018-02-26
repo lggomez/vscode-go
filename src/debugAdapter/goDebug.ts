@@ -711,28 +711,37 @@ class GoDebugSession extends DebugSession {
 		}
 	}
 
+	protected createStringDisplayVariable(vari: DebugVariable, variables: Array<any>): void {
+		let stringVal = '';
+			if (vari.children.length > 0) {
+				// All array/slice elements are assumed to be of the same kind
+				let childKind = vari.children[0].kind;
+				if (childKind === GoReflectKind.Uint || childKind === GoReflectKind.Uint8 || childKind === GoReflectKind.Int || childKind === GoReflectKind.Int32) {
+					let displayVariName = '<string>';
+					try {
+						for (let i = 0; i < vari.children.length; i++) {
+							stringVal += String.fromCharCode(parseInt(vari.children[i].value));
+						}
+					} catch {
+						stringVal = '';
+						displayVariName = '<string> (unavailable)';
+					}
+					variables.push({
+						name: displayVariName,
+						value: stringVal,
+						variablesReference: null
+					});
+				}
+			}
+	}
+
 	protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
 		verbose('VariablesRequest');
 		let vari = this._variableHandles.get(args.variablesReference);
 		let variables;
 		if (vari.kind === GoReflectKind.Array || vari.kind === GoReflectKind.Slice) {
 			variables = [];
-			let stringVal = '';
-			if (vari.children.length > 0) {
-				// All array/slice elements are assumed to be of the same kind
-				let childKind = vari.children[0].kind;
-				if (childKind === GoReflectKind.Uint || childKind === GoReflectKind.Uint8 || childKind === GoReflectKind.Int32) {
-					for (let i = 0; i < vari.children.length; i++) {
-						stringVal += String.fromCharCode(parseInt(vari.children[i].value));
-					}
-					variables.push({
-						name: 'string value',
-						value: stringVal,
-						variablesReference: null
-					});
-				}
-			}
-
+			this.createStringDisplayVariable(vari, variables);
 			for (let i = 0; i < vari.children.length; i++) {
 				let { result, variablesReference } = this.convertDebugVariableToProtocolVariable(vari.children[i], i);
 				variables.push({
