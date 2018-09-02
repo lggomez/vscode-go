@@ -81,12 +81,13 @@ function isCodeMutatorChange(e: vscode.TextDocumentChangeEvent): boolean {
 		let trimmedContentChange = contentChange.text.trim();
 		let changeRange = contentChange.range;
 		for (let i = changeRange.start.line; i <= changeRange.end.line; i++) {
+			let lineText = e.document.lineAt(i).text;
 			if (i === changeRange.start.line) {
-				changeCumulative += e.document.lineAt(i).text.substr(changeRange.start.character) || '';
+				changeCumulative += lineText.substr(changeRange.start.character) || '';
 			} else if (i === changeRange.end.line) {
-				changeCumulative += e.document.lineAt(i).text.substring(0, changeRange.end.character) || '';
+				changeCumulative += lineText.substring(0, changeRange.end.character) || '';
 			} else {
-				changeCumulative += e.document.lineAt(i).text || '';
+				changeCumulative += lineText || '';
 			}
 		}
 		if ((changeCumulative.trim().length === 0) && (trimmedContentChange.length === 0)) {
