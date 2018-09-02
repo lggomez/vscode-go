@@ -55,9 +55,12 @@ export function removeCodeCoverage(e: vscode.TextDocumentChangeEvent) {
 	let editor = vscode.window.visibleTextEditors.find((value, index, obj) => {
 		return value.document === e.document;
 	});
-	if (!editor) {
+
+	// Ignore changes that do not mutate code (/s pattern changes on /s code sections)
+	if (!editor || !isCodeMutatorChange(e)) {
 		return;
 	}
+
 	for (let filename in coverageFiles) {
 		let found = editor.document.uri.fsPath.endsWith(filename);
 		// Check for file again if outside the $GOPATH.
@@ -69,6 +72,29 @@ export function removeCodeCoverage(e: vscode.TextDocumentChangeEvent) {
 			delete coverageFiles[filename];
 		}
 	}
+}
+
+function isCodeMutatorChange(e: vscode.TextDocumentChangeEvent): boolean {
+	let doesMutateCode = true;
+	e.contentChanges.forEach((contentChange) => {
+		let changeCumulative = '';
+		let trimmedContentChange = contentChange.text.trim();
+		let changeRange = contentChange.range;
+		for (let i = changeRange.start.line; i <= changeRange.end.line; i++) {
+			if (i === changeRange.start.line) {
+				changeCumulative += e.document.lineAt(i).text.substr(changeRange.start.character) || '';
+			} else if (i === changeRange.end.line) {
+				changeCumulative += e.document.lineAt(i).text.substring(0, changeRange.end.character) || '';
+			} else {
+				changeCumulative += e.document.lineAt(i).text || '';
+			}
+		}
+		if ((changeCumulative.trim().length === 0) && (trimmedContentChange.length === 0)) {
+			// Change text and document lines are either \n,\r,\t or whitespace
+			doesMutateCode = false;
+		}
+	});
+	return doesMutateCode;
 }
 
 export function toggleCoverageCurrentPackage() {
@@ -191,10 +217,10 @@ function updateCoverageDecorator(cfg: vscode.WorkspaceConfiguration) {
 	// before we're done, we need to turn these names into actual decorations
 	decorators = {
 		type: defaults.type,
-		coveredGutterDecorator:  vscode.window.createTextEditorDecorationType({gutterIconPath: gutters[defaults.coveredGutterStyle]}),
-		uncoveredGutterDecorator:  vscode.window.createTextEditorDecorationType({gutterIconPath: gutters[defaults.uncoveredGutterStyle]}),
-		coveredHighlightDecorator: vscode.window.createTextEditorDecorationType({backgroundColor: defaults.coveredHighlightColor}),
-		uncoveredHighlightDecorator: vscode.window.createTextEditorDecorationType({backgroundColor: defaults.uncoveredHighlightColor})
+		coveredGutterDecorator: vscode.window.createTextEditorDecorationType({ gutterIconPath: gutters[defaults.coveredGutterStyle] }),
+		uncoveredGutterDecorator: vscode.window.createTextEditorDecorationType({ gutterIconPath: gutters[defaults.uncoveredGutterStyle] }),
+		coveredHighlightDecorator: vscode.window.createTextEditorDecorationType({ backgroundColor: defaults.coveredHighlightColor }),
+		uncoveredHighlightDecorator: vscode.window.createTextEditorDecorationType({ backgroundColor: defaults.uncoveredHighlightColor })
 	};
 }
 
