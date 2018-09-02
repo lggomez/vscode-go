@@ -56,7 +56,7 @@ export function removeCodeCoverage(e: vscode.TextDocumentChangeEvent) {
 		return value.document === e.document;
 	});
 
-	// Ignore changes that do not mutate code (/s pattern changes on /s code sections)
+	// Ignore changes that do not mutate code state (changes on document ranges that meet /s pattern)
 	if (!editor || !isCodeMutatorChange(e)) {
 		return;
 	}
@@ -91,7 +91,7 @@ function isCodeMutatorChange(e: vscode.TextDocumentChangeEvent): boolean {
 			}
 		}
 		if ((changeCumulative.trim().length === 0) && (trimmedContentChange.length === 0)) {
-			// Change text and document lines are either \n,\r,\t or whitespace
+			// Change text and document lines are either \n,\r,\t or whitespace (akin to /s pattern)
 			doesMutateCode = false;
 		}
 	});
