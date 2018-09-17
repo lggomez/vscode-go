@@ -23,7 +23,9 @@ statusBarItem.text = '$(x) Cancel Running Tests';
  */
 const runningTestProcesses: cp.ChildProcess[] = [];
 
-const testSuiteMethodRegex = /^\(([^)]+)\)\.(Test.*)$/;
+const testFuncRegex = /^Test.+|Example.+/;
+const testMethodRegex = /^\(([^)]+)\)\.(Test.*)$/;
+const benchmarkRegex = /^Benchmark$/;
 
 /**
  * Input to goTest.
@@ -96,12 +98,13 @@ export function getTestFunctions(doc: vscode.TextDocument, token: vscode.Cancell
 	let documentSymbolProvider = new GoDocumentSymbolProvider();
 	return documentSymbolProvider
 		.provideDocumentSymbols(doc, token)
-		.then(symbols =>
-			symbols.filter(sym =>
+		.then(symbols => {
+			const testify = symbols.some(sym => sym.kind === vscode.SymbolKind.Module && sym.name === 'github.com/stretchr/testify/suite');
+			return symbols.filter(sym =>
 				sym.kind === vscode.SymbolKind.Function
-				&& (sym.name.startsWith('Test') || sym.name.startsWith('Example') || testSuiteMethodRegex.test(sym.name))
-			)
-		);
+				&& (testFuncRegex.test(sym.name) || (testify && testMethodRegex.test(sym.name)))
+			);
+		});
 }
 
 /**
@@ -111,7 +114,7 @@ export function getTestFunctions(doc: vscode.TextDocument, token: vscode.Cancell
  * @param symbolName Symbol Name to extract method name from.
  */
 export function extractInstanceTestName(symbolName: string): string {
-	const match = symbolName.match(testSuiteMethodRegex);
+	const match = symbolName.match(testMethodRegex);
 	if (!match || match.length !== 3) {
 		return null;
 	}
@@ -126,7 +129,7 @@ export function extractInstanceTestName(symbolName: string): string {
  */
 export function findAllTestSuiteRuns(doc: vscode.TextDocument, allTests: vscode.SymbolInformation[]): vscode.SymbolInformation[] {
 	// get non-instance test functions
-	const testFunctions = allTests.filter(t => !testSuiteMethodRegex.test(t.name));
+	const testFunctions = allTests.filter(t => !testMethodRegex.test(t.name));
 	// filter further to ones containing suite.Run()
 	return testFunctions.filter(t => doc.getText(t.location.range).includes('suite.Run('));
 }
@@ -144,7 +147,7 @@ export function getBenchmarkFunctions(doc: vscode.TextDocument, token: vscode.Ca
 		.then(symbols =>
 			symbols.filter(sym =>
 				sym.kind === vscode.SymbolKind.Function
-				&& sym.name.startsWith('Benchmark'))
+				&& benchmarkRegex.test(sym.name))
 		);
 }
 
@@ -166,7 +169,7 @@ export function goTest(testconfig: TestConfig): Thenable<boolean> {
 			outputChannel.show(true);
 		}
 
-		let buildTags: string = testconfig.goConfig['buildTags'];
+		let testTags: string = testconfig.goConfig['testTags'] !== null ? testconfig.goConfig['testTags'] : testconfig.goConfig['buildTags'];
 		let args: Array<string> = ['test', ...testconfig.flags];
 		let testType: string = testconfig.isBenchmark ? 'Benchmarks' : 'Tests';
 
@@ -175,8 +178,8 @@ export function goTest(testconfig: TestConfig): Thenable<boolean> {
 		} else {
 			args.push('-timeout', testconfig.goConfig['testTimeout']);
 		}
-		if (buildTags && testconfig.flags.indexOf('-tags') === -1) {
-			args.push('-tags', buildTags);
+		if (testTags && testconfig.flags.indexOf('-tags') === -1) {
+			args.push('-tags', testTags);
 		}
 
 		let testEnvVars = getTestEnvVars(testconfig.goConfig);
@@ -321,10 +324,10 @@ function targetArgs(testconfig: TestConfig): Thenable<Array<string>> {
 			params = ['-bench', util.format('^%s$', testconfig.functions.join('|'))];
 		} else {
 			let testFunctions = testconfig.functions;
-			let testifyMethods = testFunctions.filter(fn => testSuiteMethodRegex.test(fn));
+			let testifyMethods = testFunctions.filter(fn => testMethodRegex.test(fn));
 			if (testifyMethods.length > 0) {
 				// filter out testify methods
-				testFunctions = testFunctions.filter(fn => !testSuiteMethodRegex.test(fn));
+				testFunctions = testFunctions.filter(fn => !testMethodRegex.test(fn));
 				testifyMethods = testifyMethods.map(extractInstanceTestName);
 			}
 
@@ -339,7 +342,11 @@ function targetArgs(testconfig: TestConfig): Thenable<Array<string>> {
 			}
 		}
 		return Promise.resolve(params);
-	} else if (testconfig.includeSubDirectories && !testconfig.isBenchmark) {
+	}
+	let params: string[] = [];
+	if (testconfig.isBenchmark) {
+		params = ['-bench', '.'];
+	} else if (testconfig.includeSubDirectories) {
 		return getGoVersion().then((ver: SemVersion) => {
 			if (ver && (ver.major > 1 || (ver.major === 1 && ver.minor >= 9))) {
 				return ['./...'];
@@ -347,5 +354,5 @@ function targetArgs(testconfig: TestConfig): Thenable<Array<string>> {
 			return getNonVendorPackages(testconfig.dir);
 		});
 	}
-	return Promise.resolve([]);
+	return Promise.resolve(params);
 }

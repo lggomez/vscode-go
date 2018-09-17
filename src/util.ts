@@ -430,7 +430,7 @@ export function getCurrentGoPath(workspaceUri?: vscode.Uri): string {
 				// No op
 			}
 		}
-		if (inferredGopath && process.env['GOPATH']) {
+		if (inferredGopath && process.env['GOPATH'] && inferredGopath !== process.env['GOPATH']) {
 			inferredGopath += path.delimiter + process.env['GOPATH'];
 		}
 	}
@@ -842,5 +842,44 @@ export function makeMemoizedByteOffsetConverter(buffer: Buffer): (byteOffset: nu
 		memo.insert(byteOffset, nearest.value + charDelta);
 		return nearest.value + charDelta;
 	};
+}
+
+function rmdirRecursive(dir) {
+	if (fs.existsSync(dir)) {
+		fs.readdirSync(dir).forEach(file => {
+			const relPath = path.join(dir, file);
+			if (fs.lstatSync(relPath).isDirectory()) {
+				rmdirRecursive(dir);
+			} else {
+				fs.unlinkSync(relPath);
+			}
+		});
+		fs.rmdirSync(dir);
+	}
+}
+
+let tmpDir: string;
+
+/**
+ * Returns file path for given name in temp dir
+ * @param name Name of the file
+ */
+export function getTempFilePath(name: string): string {
+	if (!tmpDir) {
+		tmpDir = fs.mkdtempSync(os.tmpdir() + path.sep + 'vscode-go');
+	}
+
+	if (!fs.existsSync(tmpDir)) {
+		fs.mkdirSync(tmpDir);
+	}
+
+	return path.normalize(path.join(tmpDir, name));
+}
+
+export function cleanupTempDir() {
+	if (!tmpDir) {
+		rmdirRecursive(tmpDir);
+	}
+	tmpDir = undefined;
 }
 

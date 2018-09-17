@@ -1,6 +1,6 @@
 import path = require('path');
 import vscode = require('vscode');
-import { getToolsEnvVars, runTool, ICheckResult, handleDiagnosticErrors, getWorkspaceFolderPath, getCurrentGoPath, getUserNameHash } from './util';
+import { getToolsEnvVars, runTool, ICheckResult, handleDiagnosticErrors, getWorkspaceFolderPath, getCurrentGoPath, getTempFilePath } from './util';
 import { outputChannel } from './goStatus';
 import os = require('os');
 import { getNonVendorPackages } from './goPackages';
@@ -70,7 +70,7 @@ export function goBuild(fileUri: vscode.Uri, goConfig: vscode.WorkspaceConfigura
 	}
 
 	const buildEnv = Object.assign({}, getToolsEnvVars());
-	const tmpPath = path.normalize(path.join(os.tmpdir(), 'go-code-check.' + getUserNameHash()));
+	const tmpPath = getTempFilePath('go-code-check');
 	const isTestFile = fileUri && fileUri.fsPath.endsWith('_test.go');
 	const buildFlags: string[] = isTestFile ? getTestFlags(goConfig, null) : (Array.isArray(goConfig['buildFlags']) ? [...goConfig['buildFlags']] : []);
 	const buildArgs: string[] = isTestFile ? ['test', '-c'] : ['build'];
@@ -82,19 +82,20 @@ export function goBuild(fileUri: vscode.Uri, goConfig: vscode.WorkspaceConfigura
 			buildFlags.splice(buildFlags.indexOf('-i'), 1);
 		}
 	}
-	buildArgs.push('-o', tmpPath, ...buildFlags);
+	buildArgs.push(...buildFlags);
 	if (goConfig['buildTags'] && buildFlags.indexOf('-tags') === -1) {
 		buildArgs.push('-tags');
 		buildArgs.push(goConfig['buildTags']);
 	}
 
 	if (buildWorkspace && currentWorkspace && !isTestFile) {
+		let count = 1;
 		return getNonVendorPackages(currentWorkspace).then(pkgs => {
 			let buildPromises = [];
 			buildPromises = pkgs.map(pkgPath => {
 				running = true;
 				return runTool(
-					buildArgs.concat(pkgPath),
+					buildArgs.concat('-o', `${tmpPath}-${count++}`, pkgPath),
 					currentWorkspace,
 					'error',
 					true,
@@ -123,7 +124,7 @@ export function goBuild(fileUri: vscode.Uri, goConfig: vscode.WorkspaceConfigura
 	let importPath = currentGoWorkspace ? cwd.substr(currentGoWorkspace.length + 1) : '.';
 	running = true;
 	return runTool(
-		buildArgs.concat(importPath),
+		buildArgs.concat('-o', tmpPath, importPath),
 		cwd,
 		'error',
 		true,
