@@ -9,8 +9,9 @@ import vscode = require('vscode');
 import cp = require('child_process');
 import path = require('path');
 import { byteOffsetAt, getBinPath } from './util';
-import { promptForMissingTool } from './goInstallTools';
+import { promptForMissingTool, installTools } from './goInstallTools';
 import { getGoVersion, SemVersion, goKeywords, isPositionInString, getToolsEnvVars, getFileArchive, killProcess } from './util';
+import { isModSupported } from './goModules';
 
 const missingToolMsg = 'Missing tool: ';
 
@@ -41,14 +42,40 @@ export function definitionLocation(document: vscode.TextDocument, position: vsco
 	let offset = byteOffsetAt(document, position);
 	let env = getToolsEnvVars();
 	return getGoVersion().then((ver: SemVersion) => {
-		// If no Go version can be parsed, it means it's a non-tagged one.
-		// Assume it's > Go 1.5
-		if (toolForDocs === 'godoc' || (ver && (ver.major < 1 || (ver.major === 1 && ver.minor < 6)))) {
-			return definitionLocation_godef(document, position, offset, includeDocs, env, token);
-		} else if (toolForDocs === 'guru') {
-			return definitionLocation_guru(document, position, offset, env, token);
-		}
-		return definitionLocation_gogetdoc(document, position, offset, env, true, token);
+		const gogetdocPrompt = (!ver || (ver.major === 1 && ver.minor >= 11 && !includeDocs)) ? isModSupported(document.uri) : Promise.resolve(false);
+		return gogetdocPrompt.then(promptMod => {
+			if (promptMod) {
+				let msg = 'To get support for the Go to definition feature when using Go modules, please use the "gogetdoc" tool. Use "go get -u -v github.com/zmb3/gogetdoc" to install or press the Install button.';
+				if (toolForDocs === 'gogetdoc') {
+					msg = 'To get support for the Go to definition feature when using Go modules, please update your version of the "gogetdoc" tool. Use "go get -u -v github.com/zmb3/gogetdoc" to update or press the Update button.';
+				}
+				vscode.window.showInformationMessage(msg, toolForDocs === 'gogetdoc' ? 'Update' : 'Install', 'Later')
+					.then(selected => {
+						if (selected === 'Install') {
+							const result = goConfig.inspect('docsTool');
+							if (result.workspaceFolderValue) {
+								goConfig.update('docsTool', 'gogetdoc', vscode.ConfigurationTarget.WorkspaceFolder);
+							}
+							if (result.workspaceValue) {
+								goConfig.update('docsTool', 'gogetdoc', vscode.ConfigurationTarget.Workspace);
+							}
+							goConfig.update('docsTool', 'gogetdoc', vscode.ConfigurationTarget.Global);
+						}
+						if (selected === 'Install' || selected === 'Update') {
+							installTools(['gogetdoc']);
+						}
+					});
+				return Promise.resolve(null);
+			}
+			// If no Go version can be parsed, it means it's a non-tagged one.
+			// Assume it's > Go 1.5
+			if (toolForDocs === 'godoc' || (ver && (ver.major < 1 || (ver.major === 1 && ver.minor < 6)))) {
+				return definitionLocation_godef(document, position, offset, includeDocs, env, token);
+			} else if (toolForDocs === 'guru') {
+				return definitionLocation_guru(document, position, offset, env, token);
+			}
+			return definitionLocation_gogetdoc(document, position, offset, env, true, token);
+		});
 	});
 }
 

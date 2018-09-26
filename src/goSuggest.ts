@@ -13,6 +13,7 @@ import { getCurrentGoWorkspaceFromGOPATH } from './goPath';
 import { promptForMissingTool, promptForUpdatingTool } from './goInstallTools';
 import { getTextEditForAddImport } from './goImport';
 import { getImportablePackages } from './goPackages';
+import { isModSupported } from './goModules';
 
 function vscodeKindFromGoCodeClass(kind: string): vscode.CompletionItemKind {
 	switch (kind) {
@@ -47,7 +48,10 @@ export class GoCompletionItemProvider implements vscode.CompletionItemProvider {
 	private pkgsList = new Map<string, string>();
 	private killMsgShown: boolean = false;
 	private setGocodeOptions: boolean = true;
+	private isGoMod: boolean = false;
 	private globalState: vscode.Memento;
+	private previousFile: string;
+	private previousFileDir: string;
 
 	constructor(globalState?: vscode.Memento) {
 		this.globalState = globalState;
@@ -58,7 +62,7 @@ export class GoCompletionItemProvider implements vscode.CompletionItemProvider {
 	}
 
 	public provideCompletionItemsInternal(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, config: vscode.WorkspaceConfiguration): Thenable<vscode.CompletionItem[]> {
-		return this.ensureGoCodeConfigured().then(() => {
+		return this.ensureGoCodeConfigured(document.uri).then(() => {
 			return new Promise<vscode.CompletionItem[]>((resolve, reject) => {
 				let filename = document.fileName;
 				let lineText = document.lineAt(position.line).text;
@@ -117,11 +121,11 @@ export class GoCompletionItemProvider implements vscode.CompletionItemProvider {
 					if (suggestions.length === 0 && lineTillCurrentPosition.endsWith('.')) {
 
 						let pkgPath = this.getPackagePathFromLine(lineTillCurrentPosition);
-						if (pkgPath) {
+						if (pkgPath.length === 1) {
 							// Now that we have the package path, import it right after the "package" statement
 							let { imports, pkg } = parseFilePrelude(vscode.window.activeTextEditor.document.getText());
 							let posToAddImport = document.offsetAt(new vscode.Position(pkg.start + 1, 0));
-							let textToAdd = `import "${pkgPath}"\n`;
+							let textToAdd = `import "${pkgPath[0]}"\n`;
 							inputText = inputText.substr(0, posToAddImport) + textToAdd + inputText.substr(posToAddImport);
 							offset += textToAdd.length;
 
@@ -131,10 +135,27 @@ export class GoCompletionItemProvider implements vscode.CompletionItemProvider {
 								// add additionalTextEdits to do the same in the actual document in the editor
 								// We use additionalTextEdits instead of command so that 'useCodeSnippetsOnFunctionSuggest' feature continues to work
 								newsuggestions.forEach(item => {
-									item.additionalTextEdits = getTextEditForAddImport(pkgPath);
+									item.additionalTextEdits = getTextEditForAddImport(pkgPath[0]);
 								});
 								resolve(newsuggestions);
 							}, reject);
+						}
+						if (pkgPath.length > 1) {
+							pkgPath.forEach(pkg => {
+								let item = new vscode.CompletionItem(
+									`${lineTillCurrentPosition.replace('.', '').trim()} (${pkg})`,
+									vscode.CompletionItemKind.Module
+								);
+								item.additionalTextEdits = getTextEditForAddImport(pkg);
+								item.insertText = '';
+								item.detail = pkg;
+								item.command = {
+									title: 'Trigger Suggest',
+									command: 'editor.action.triggerSuggest'
+								};
+								suggestions.push(item);
+							});
+							resolve(suggestions);
 						}
 					}
 					resolve(suggestions);
@@ -145,9 +166,11 @@ export class GoCompletionItemProvider implements vscode.CompletionItemProvider {
 
 	private runGoCode(document: vscode.TextDocument, filename: string, inputText: string, offset: number, inString: boolean, position: vscode.Position, lineText: string, currentWord: string, includeUnimportedPkgs: boolean, config: vscode.WorkspaceConfiguration): Thenable<vscode.CompletionItem[]> {
 		return new Promise<vscode.CompletionItem[]>((resolve, reject) => {
-			let gocode = getBinPath('gocode');
+			// let gocodeName = this.isGoMod ? 'gocode-gomod' : 'gocode';
+			let gocodeName = 'gocode';
+			let gocode = getBinPath(gocodeName);
 			if (!path.isAbsolute(gocode)) {
-				promptForMissingTool(gocode);
+				promptForMissingTool(gocodeName);
 				return reject();
 			}
 
@@ -169,7 +192,7 @@ export class GoCompletionItemProvider implements vscode.CompletionItemProvider {
 			p.stderr.on('data', data => stderr += data);
 			p.on('error', err => {
 				if (err && (<any>err).code === 'ENOENT') {
-					promptForMissingTool('gocode');
+					promptForMissingTool(gocodeName);
 					return reject();
 				}
 				return reject(err);
@@ -182,7 +205,7 @@ export class GoCompletionItemProvider implements vscode.CompletionItemProvider {
 							this.killMsgShown = true;
 						}
 						if (stderr.startsWith('flag provided but not defined:')) {
-							promptForUpdatingTool('gocode');
+							promptForUpdatingTool(gocodeName);
 						}
 						return reject();
 					}
@@ -301,11 +324,18 @@ export class GoCompletionItemProvider implements vscode.CompletionItemProvider {
 		});
 	}
 	// TODO: Shouldn't lib-path also be set?
-	private ensureGoCodeConfigured(): Thenable<void> {
-		let setPkgsList = getImportablePackages(vscode.window.activeTextEditor.document.fileName, true).then(pkgMap => { this.pkgsList = pkgMap; });
+	private ensureGoCodeConfigured(fileuri: vscode.Uri): Thenable<void> {
+		const currentFile = fileuri.fsPath;
+		let checkModSupport = Promise.resolve(this.isGoMod);
+		if (this.previousFile !== currentFile && this.previousFileDir !== path.dirname(currentFile)) {
+			this.previousFile = currentFile;
+			this.previousFileDir = path.dirname(currentFile);
+			checkModSupport = isModSupported(fileuri).then(result => this.isGoMod = result);
+		}
+		let setPkgsList = getImportablePackages(currentFile, true).then(pkgMap => { this.pkgsList = pkgMap; });
 
 		if (!this.setGocodeOptions) {
-			return setPkgsList;
+			return Promise.all([checkModSupport, setPkgsList]).then(() => { return; });
 		}
 
 		let setGocodeProps = new Promise<void>((resolve, reject) => {
@@ -356,7 +386,7 @@ export class GoCompletionItemProvider implements vscode.CompletionItemProvider {
 			});
 		});
 
-		return Promise.all([setPkgsList, setGocodeProps]).then(() => {
+		return Promise.all([setPkgsList, setGocodeProps, checkModSupport]).then(() => {
 			return;
 		});
 	}
@@ -396,7 +426,7 @@ export class GoCompletionItemProvider implements vscode.CompletionItemProvider {
 	}
 
 	// Given a line ending with dot, return the word preceeding the dot if it is a package name that can be imported
-	private getPackagePathFromLine(line: string): string {
+	private getPackagePathFromLine(line: string): string[] {
 		let pattern = /(\w+)\.$/g;
 		let wordmatches = pattern.exec(line);
 		if (!wordmatches) {
@@ -411,9 +441,6 @@ export class GoCompletionItemProvider implements vscode.CompletionItemProvider {
 				matchingPackages.push(pkgPath);
 			}
 		});
-
-		if (matchingPackages && matchingPackages.length === 1) {
-			return matchingPackages[0];
-		}
+		return matchingPackages;
 	}
 }

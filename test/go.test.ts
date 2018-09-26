@@ -66,6 +66,7 @@ suite('Go Extension Tests', () => {
 		fs.copySync(path.join(fixtureSourcePath, 'buildTags', 'hello.go'), path.join(fixturePath, 'buildTags', 'hello.go'));
 		fs.copySync(path.join(fixtureSourcePath, 'testTags', 'hello_test.go'), path.join(fixturePath, 'testTags', 'hello_test.go'));
 		fs.copySync(path.join(fixtureSourcePath, 'completions', 'unimportedPkgs.go'), path.join(fixturePath, 'completions', 'unimportedPkgs.go'));
+		fs.copySync(path.join(fixtureSourcePath, 'completions', 'unimportedMultiplePkgs.go'), path.join(fixturePath, 'completions', 'unimportedMultiplePkgs.go'));
 		fs.copySync(path.join(fixtureSourcePath, 'completions', 'snippets.go'), path.join(fixturePath, 'completions', 'snippets.go'));
 		fs.copySync(path.join(fixtureSourcePath, 'completions', 'nosnippets.go'), path.join(fixturePath, 'completions', 'nosnippets.go'));
 		fs.copySync(path.join(fixtureSourcePath, 'completions', 'exportedMemberDocs.go'), path.join(fixturePath, 'completions', 'exportedMemberDocs.go'));
@@ -171,7 +172,7 @@ suite('Go Extension Tests', () => {
 			}
 			return Promise.resolve();
 		}).then(() => done(), done);
-	});
+	}).timeout(10000);
 
 	test('Test SignatureHelp Provider using godoc', (done) => {
 		let printlnDoc = `Println formats using the default formats for its operands and writes to
@@ -214,7 +215,7 @@ It returns the number of bytes written and any write error encountered.
 			}
 			return Promise.resolve();
 		}).then(() => done(), done);
-	});
+	}).timeout(10000);
 
 	test('Test Hover Provider using godoc', (done) => {
 		let printlnDoc = `Println formats using the default formats for its operands and writes to
@@ -270,7 +271,7 @@ It returns the number of bytes written and any write error encountered.
 			}
 			return Promise.resolve();
 		}).then(() => done(), done);
-	});
+	}).timeout(10000);
 
 	test('Error checking', (done) => {
 		let config = Object.create(vscode.workspace.getConfiguration('go'), {
@@ -942,6 +943,41 @@ It returns the number of bytes written and any write error encountered.
 					})
 				);
 				return Promise.all(promises).then(() => vscode.commands.executeCommand('workbench.action.closeActiveEditor'));
+			});
+		}, (err) => {
+			assert.ok(false, `error in OpenTextDocument ${err}`);
+		}).then(() => done(), done);
+	});
+
+	test('Test Completion on unimported packages (multiple)', (done) => {
+		let config = Object.create(vscode.workspace.getConfiguration('go'), {});
+		let provider = new GoCompletionItemProvider();
+		let position = new vscode.Position(3, 14);
+		let expectedItems = [
+			{
+				label: 'template (html/template)',
+				import: '\nimport (\n\t"html/template"\n)\n'
+			},
+			{
+				label: 'template (text/template)',
+				import: '\nimport (\n\t"text/template"\n)\n'
+			}
+		];
+		let uri = vscode.Uri.file(path.join(fixturePath, 'completions', 'unimportedMultiplePkgs.go'));
+		vscode.workspace.openTextDocument(uri).then((textDocument) => {
+			return vscode.window.showTextDocument(textDocument).then(editor => {
+				return provider.provideCompletionItemsInternal(editor.document, position, null, config).then(items => {
+					let labels = items.map(x => x.label);
+					expectedItems.forEach(expectedItem => {
+						const actualItem: vscode.CompletionItem = items.filter(item => item.label === expectedItem.label)[0];
+						if (!actualItem) {
+							assert.fail(actualItem, expectedItem, `Missing expected item in completion list: ${expectedItem.label} Actual: ${labels}`);
+							return;
+						}
+						assert.equal(actualItem.additionalTextEdits.length, 1);
+						assert.equal(actualItem.additionalTextEdits[0].newText, expectedItem.import);
+					});
+				}).then(() => vscode.commands.executeCommand('workbench.action.closeActiveEditor'));
 			});
 		}, (err) => {
 			assert.ok(false, `error in OpenTextDocument ${err}`);
