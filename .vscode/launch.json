@@ -1,5 +1,5 @@
 {
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"configurations": [
 		{
 			"name": "Launch Extension",
@@ -7,28 +7,21 @@
 			"request": "launch",
 			// path to VSCode executable
 			"runtimeExecutable": "${execPath}",
-			"args": [
-				"--extensionDevelopmentPath=${workspaceRoot}"
-			],
+			"args": ["--extensionDevelopmentPath=${workspaceFolder}"],
 			"stopOnEntry": false,
 			"sourceMaps": true,
-			"outFiles": [
-				"${workspaceRoot}/out/**/*.js"
-			],
+			"outFiles": ["${workspaceFolder}/out/**/*.js"],
 			"preLaunchTask": "npm"
 		},
 		{
 			"name": "Launch as server",
-			"type": "node2",
+			"type": "node",
+			"protocol": "inspector",
 			"request": "launch",
-			"program": "${workspaceRoot}/out/src/debugAdapter/goDebug.js",
-			"args": [
-				"--server=4712"
-			],
+			"program": "${workspaceFolder}/out/src/debugAdapter/goDebug.js",
+			"args": ["--server=4711"],
 			"sourceMaps": true,
-			"outFiles": [
-				"${workspaceRoot}/out/**/*.js"
-			]
+			"outFiles": ["${workspaceFolder}/out/**/*.js"]
 		},
 		{
 			"name": "Launch Tests",
@@ -37,28 +30,26 @@
 			"runtimeExecutable": "${execPath}",
 			// the workspace path should be GOPATH
 			"args": [
-				"--extensionDevelopmentPath=${workspaceRoot}",
-				"--extensionTestsPath=${workspaceRoot}/out/test"
+				"--extensionDevelopmentPath=${workspaceFolder}",
+				"--extensionTestsPath=${workspaceFolder}/out/test"
 			],
 			"stopOnEntry": false,
 			"sourceMaps": true,
-			"outFiles": [
-				"${workspaceRoot}/out/**/*.js"
-			],
+			"outFiles": ["${workspaceFolder}/out/**/*.js"],
 			"preLaunchTask": "npm"
 		},
 		{
 			"type": "node",
 			"request": "launch",
 			"name": "Unit Tests",
-			"program": "${workspaceRoot}/node_modules/mocha/bin/_mocha",
+			"program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
 			"args": [
 				"-u",
 				"tdd",
 				"--timeout",
 				"5000",
 				"--colors",
-				"${workspaceRoot}/out/test/unit"
+				"${workspaceFolder}/out/test/unit"
 			],
 			"internalConsoleOptions": "openOnSessionStart"
 		}
@@ -66,10 +57,7 @@
 	"compounds": [
 		{
 			"name": "Extension + Debug server",
-			"configurations": [
-				"Launch Extension",
-				"Launch as server"
-			]
+			"configurations": ["Launch Extension", "Launch as server"]
 		}
 	]
 }

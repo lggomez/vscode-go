@@ -10,7 +10,8 @@ import vscode = require('vscode');
 import os = require('os');
 import { getTempFilePath } from './util';
 import { goTest, TestConfig, getTestFlags, getTestFunctions, getBenchmarkFunctions, extractInstanceTestName, findAllTestSuiteRuns } from './testUtils';
-import { getCoverage } from './goCover';
+import { applyCodeCoverageToAllEditors } from './goCover';
+import { isModSupported } from './goModules';
 
 // lastTestConfig holds a reference to the last executed TestConfig which allows
 // the last test to be easily re-executed.
@@ -52,7 +53,7 @@ export function testAtCursor(goConfig: vscode.WorkspaceConfiguration, isBenchmar
 						testFunctionName = func.name;
 						break;
 					}
-				};
+				}
 			}
 
 			if (!testFunctionName) {
@@ -81,13 +82,16 @@ export function testAtCursor(goConfig: vscode.WorkspaceConfiguration, isBenchmar
 			// Remember this config as the last executed test.
 			lastTestConfig = testConfig;
 
-			return goTest(testConfig);
+			return isModSupported(editor.document.uri).then(isMod => {
+				testConfig.isMod = isMod;
+				return goTest(testConfig).then(success => {
+					if (success && tmpCoverPath) {
+						return applyCodeCoverageToAllEditors(tmpCoverPath, testConfig.dir);
+					}
+				});
+			});
 		});
-	}).then(success => {
-		if (success && tmpCoverPath) {
-			return getCoverage(tmpCoverPath);
-		}
-	}, err => {
+	}).then(null, err => {
 		console.error(err);
 	});
 }
@@ -115,12 +119,15 @@ export function testCurrentPackage(goConfig: vscode.WorkspaceConfiguration, isBe
 	// Remember this config as the last executed test.
 	lastTestConfig = testConfig;
 
-	goTest(testConfig).then(success => {
-		if (success && tmpCoverPath) {
-			return getCoverage(tmpCoverPath);
-		}
-	}, err => {
-		console.log(err);
+	isModSupported(editor.document.uri).then(isMod => {
+		testConfig.isMod = isMod;
+		return goTest(testConfig).then(success => {
+			if (success && tmpCoverPath) {
+				return applyCodeCoverageToAllEditors(tmpCoverPath, testConfig.dir);
+			}
+		}, err => {
+			console.log(err);
+		});
 	});
 }
 
@@ -130,25 +137,29 @@ export function testCurrentPackage(goConfig: vscode.WorkspaceConfiguration, isBe
  * @param goConfig Configuration for the Go extension.
  */
 export function testWorkspace(goConfig: vscode.WorkspaceConfiguration, args: any) {
-	let dir = vscode.workspace.rootPath;
-	if (vscode.window.activeTextEditor && vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri)) {
-		dir = vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri).uri.fsPath;
-	}
-	if (!dir) {
+	if (!vscode.workspace.workspaceFolders.length) {
 		vscode.window.showInformationMessage('No workspace is open to run tests.');
 		return;
 	}
-	const testConfig = {
+	let workspaceUri = vscode.workspace.workspaceFolders[0].uri;
+	if (vscode.window.activeTextEditor && vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri)) {
+		workspaceUri = vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri).uri;
+	}
+
+	const testConfig: TestConfig = {
 		goConfig: goConfig,
-		dir: dir,
+		dir: workspaceUri.fsPath,
 		flags: getTestFlags(goConfig, args),
 		includeSubDirectories: true
 	};
 	// Remember this config as the last executed test.
 	lastTestConfig = testConfig;
 
-	goTest(testConfig).then(null, err => {
-		console.error(err);
+	isModSupported(workspaceUri).then(isMod => {
+		testConfig.isMod = isMod;
+		goTest(testConfig).then(null, err => {
+			console.error(err);
+		});
 	});
 }
 
@@ -183,7 +194,10 @@ export function testCurrentFile(goConfig: vscode.WorkspaceConfiguration, isBench
 			// Remember this config as the last executed test.
 			lastTestConfig = testConfig;
 
-			return goTest(testConfig);
+			return isModSupported(editor.document.uri).then(isMod => {
+				testConfig.isMod = isMod;
+				return goTest(testConfig);
+			});
 		});
 	}).then(null, err => {
 		console.error(err);

@@ -11,6 +11,7 @@ import { parseEnvFile, getCurrentGoWorkspaceFromGOPATH } from './goPath';
 import { getToolsEnvVars, getGoVersion, LineBuffer, SemVersion, resolvePath, getCurrentGoPath, getBinPath } from './util';
 import { GoDocumentSymbolProvider } from './goOutline';
 import { getNonVendorPackages } from './goPackages';
+import { getCurrentPackage } from './goModules';
 
 const sendSignal = 'SIGKILL';
 const outputChannel = vscode.window.createOutputChannel('Go Tests');
@@ -23,7 +24,7 @@ statusBarItem.text = '$(x) Cancel Running Tests';
  */
 const runningTestProcesses: cp.ChildProcess[] = [];
 
-const testFuncRegex = /^Test.+|Example.+/;
+const testFuncRegex = /^Test.+|^Example.+/;
 const testMethodRegex = /^\(([^)]+)\)\.(Test.*)$/;
 const benchmarkRegex = /^Benchmark.+/;
 
@@ -59,6 +60,10 @@ export interface TestConfig {
 	 * Whether this is a benchmark.
 	 */
 	isBenchmark?: boolean;
+	/**
+	 * Whether the tests are being run in a project that uses Go modules
+	 */
+	isMod?: boolean;
 }
 
 export function getTestEnvVars(config: vscode.WorkspaceConfiguration): any {
@@ -95,11 +100,11 @@ export function getTestFlags(goConfig: vscode.WorkspaceConfiguration, args: any)
  * @return test function symbols for the source file.
  */
 export function getTestFunctions(doc: vscode.TextDocument, token: vscode.CancellationToken): Thenable<vscode.SymbolInformation[]> {
-	let documentSymbolProvider = new GoDocumentSymbolProvider();
+	let documentSymbolProvider = new GoDocumentSymbolProvider(true);
 	return documentSymbolProvider
 		.provideDocumentSymbols(doc, token)
 		.then(symbols => {
-			const testify = symbols.some(sym => sym.kind === vscode.SymbolKind.Module && sym.name === 'github.com/stretchr/testify/suite');
+			const testify = symbols.some(sym => sym.kind === vscode.SymbolKind.Namespace && sym.name === '"github.com/stretchr/testify/suite"');
 			return symbols.filter(sym =>
 				sym.kind === vscode.SymbolKind.Function
 				&& (testFuncRegex.test(sym.name) || (testify && testMethodRegex.test(sym.name)))
@@ -170,7 +175,7 @@ export function goTest(testconfig: TestConfig): Thenable<boolean> {
 		}
 
 		let testTags: string = testconfig.goConfig['testTags'] !== null ? testconfig.goConfig['testTags'] : testconfig.goConfig['buildTags'];
-		let args: Array<string> = ['test', ...testconfig.flags];
+		let args: Array<string> = ['test'];
 		let testType: string = testconfig.isBenchmark ? 'Benchmarks' : 'Tests';
 
 		if (testconfig.isBenchmark) {
@@ -190,23 +195,50 @@ export function goTest(testconfig: TestConfig): Thenable<boolean> {
 			return Promise.resolve();
 		}
 
-		// Append the package name to args to enable running tests in symlinked directories
-		let currentGoWorkspace = getCurrentGoWorkspaceFromGOPATH(getCurrentGoPath(), testconfig.dir);
-		if (currentGoWorkspace && !testconfig.includeSubDirectories) {
-			args.push(testconfig.dir.substr(currentGoWorkspace.length + 1));
+		let currentGoWorkspace = testconfig.isMod ? '' : getCurrentGoWorkspaceFromGOPATH(getCurrentGoPath(), testconfig.dir);
+		let targets = targetArgs(testconfig);
+		let getCurrentPackagePromise = testconfig.isMod ? getCurrentPackage(testconfig.dir) : Promise.resolve(currentGoWorkspace ? testconfig.dir.substr(currentGoWorkspace.length + 1) : '');
+		let pkgMapPromise: Promise<Map<string, string> | null> = Promise.resolve(null);
+		if (testconfig.includeSubDirectories) {
+			if (testconfig.isMod) {
+				targets = ['./...'];
+				pkgMapPromise = getNonVendorPackages(testconfig.dir); // We need the mapping to get absolute paths for the files in the test output
+			} else {
+				pkgMapPromise = getGoVersion().then(ver => {
+					if (!ver || ver.major > 1 || (ver.major === 1 && ver.minor >= 9)) {
+						targets = ['./...'];
+						return null; // We dont need mapping, as we can derive the absolute paths from package path
+					}
+					return getNonVendorPackages(testconfig.dir).then(pkgMap => {
+						targets = Array.from(pkgMap.keys());
+						return pkgMap; // We need the individual package paths to pass to `go test`
+					});
+				});
+			}
 		}
 
-		targetArgs(testconfig).then(targets => {
+		Promise.all([pkgMapPromise, getCurrentPackagePromise]).then(([pkgMap, currentPackage]) => {
+			if (!pkgMap) {
+				pkgMap = new Map<string, string>();
+			}
+			// Use the package name to be in the args to enable running tests in symlinked directories
+			if (!testconfig.includeSubDirectories && currentPackage) {
+				targets.splice(0, 0, currentPackage);
+			}
+
 			let outTargets = args.slice(0);
 			if (targets.length > 4) {
 				outTargets.push('<long arguments omitted>');
 			} else {
 				outTargets.push(...targets);
+				outTargets.push(...testconfig.flags);
 			}
 			outputChannel.appendLine(['Running tool:', goRuntimePath, ...outTargets].join(' '));
 			outputChannel.appendLine('');
 
 			args.push(...targets);
+			// ensure that user provided flags are appended last (allow use of -args ...)
+			args.push(...testconfig.flags);
 
 			let tp = cp.spawn(goRuntimePath, args, { env: testEnvVars, cwd: testconfig.dir });
 			const outBuf = new LineBuffer();
@@ -216,11 +248,15 @@ export function goTest(testconfig: TestConfig): Thenable<boolean> {
 			const testResultLines: string[] = [];
 
 			const processTestResultLine = (line: string) => {
+				if (!testconfig.includeSubDirectories) {
+					outputChannel.appendLine(expandFilePathInOutput(line, testconfig.dir));
+					return;
+				}
 				testResultLines.push(line);
 				const result = line.match(packageResultLineRE);
-				if (result && currentGoWorkspace) {
+				if (result && (pkgMap.has(result[2]) || currentGoWorkspace)) {
 					const packageNameArr = result[2].split('/');
-					const baseDir = path.join(currentGoWorkspace, ...packageNameArr);
+					const baseDir = pkgMap.get(result[2]) || path.join(currentGoWorkspace, ...packageNameArr);
 					testResultLines.forEach(line => outputChannel.appendLine(expandFilePathInOutput(line, baseDir)));
 					testResultLines.splice(0);
 				}
@@ -317,9 +353,10 @@ function expandFilePathInOutput(output: string, cwd: string): string {
  *
  * @param testconfig Configuration for the Go extension.
  */
-function targetArgs(testconfig: TestConfig): Thenable<Array<string>> {
+function targetArgs(testconfig: TestConfig): Array<string> {
+	let params: string[] = [];
+
 	if (testconfig.functions) {
-		let params: string[] = [];
 		if (testconfig.isBenchmark) {
 			params = ['-bench', util.format('^%s$', testconfig.functions.join('|'))];
 		} else {
@@ -341,18 +378,11 @@ function targetArgs(testconfig: TestConfig): Thenable<Array<string>> {
 				params = params.concat(['-testify.m', util.format('^%s$', testifyMethods.join('|'))]);
 			}
 		}
-		return Promise.resolve(params);
+		return params;
 	}
-	let params: string[] = [];
+
 	if (testconfig.isBenchmark) {
 		params = ['-bench', '.'];
-	} else if (testconfig.includeSubDirectories) {
-		return getGoVersion().then((ver: SemVersion) => {
-			if (ver && (ver.major > 1 || (ver.major === 1 && ver.minor >= 9))) {
-				return ['./...'];
-			}
-			return getNonVendorPackages(testconfig.dir);
-		});
 	}
-	return Promise.resolve(params);
+	return params;
 }

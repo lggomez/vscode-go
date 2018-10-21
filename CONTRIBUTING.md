@@ -10,12 +10,23 @@ If you are interested in writing code to fix issues, first look at the issues wi
 
 To get started with the code, please see [Building, Debugging and Sideloading the extension in Visual Studio Code](https://github.com/Microsoft/vscode-go/wiki/Building,-Debugging-and-Sideloading-the-extension-in-Visual-Studio-Code) in the wiki.
 
+### Contributor License Agreement
+
+You must sign a Contribution License Agreement (CLA) before your PR will be merged. This a one-time requirement for Microsoft projects in GitHub. 
+You can read more about the Microsoft Contribution License Agreement (CLA) at https://cla.microsoft.com.
+
+However, you don't have to do this up-front. You can simply clone, fork, and submit your pull-request as usual.
+
+When your pull-request is created, a bot will evaluate whether you have signed the CLA. If required, the bot will comment on the pull request, including a link to accept the agreement.
+
+Signing the CLA might sound scary but it's actually very simple and can be done in less than a minute :)
+
 
 ## Asking Questions
 
 Have a question? First, ask away on [Gitter](https://gitter.im/Microsoft/vscode-go) or on the `vscode` channel in the [Gophers Slack](https://invite.slack.golangbridge.org/).
 
-The active community will be eager to assist you. If you dont get answers there, then feel free to ask your question by opening an issue here.
+The active community will be eager to assist you. If you don't get answers there, then feel free to ask your question by opening an issue here.
 Your well-worded question will serve as a resource to others searching for help.
 
 ## Reporting Issues
@@ -89,4 +100,3 @@ If you believe the bot got something wrong, please open a new issue and let us k
 # Thank You!
 
 Your contributions to open source, large or small, make great projects like this possible. Thank you for taking the time to contribute.
-

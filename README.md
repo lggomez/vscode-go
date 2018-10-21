@@ -2,7 +2,7 @@
 
 [![Join the chat at https://gitter.im/Microsoft/vscode-go](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/Microsoft/vscode-go?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge) [![Build Status](https://travis-ci.org/Microsoft/vscode-go.svg?branch=master)](https://travis-ci.org/Microsoft/vscode-go)
 
-This extension adds rich language support for the Go language to VS Code.
+This extension adds rich language support for the [Go language](https://golang.org/) to VS Code.
 
 Read the [Release Notes](https://github.com/Microsoft/vscode-go/wiki/Release-Notes) to know what has changed over the last few versions of this extension.
 
@@ -82,7 +82,7 @@ Set `go.useLanguageServer` to `true` to use the Go language server from [Sourceg
 * This is an experimental feature and is not available in Windows yet.
 * Since only a single language server is spun up for given VS Code instance, having multi-root setup where the folders have different GOPATH is not supported.
 * If set to true, you will be prompted to install the Go language server. Once installed, you will have to reload VS Code window. The language server will then be run by the Go extension in the background to provide services needed for the above mentioned features.
-* Everytime you change the value of the setting `go.useLanguageServer`, you need to reload the VS Code window for it to take effect.
+* Every time you change the value of the setting `go.useLanguageServer`, you need to reload the VS Code window for it to take effect.
 * To collect traces, set `"go.languageServerFlags": ["-trace"]`
 * To collect errors from language server in a logfile, set `"go.languageServerFlags": ["-trace", "-logfile", "path to a text file that exists"]`
 * Use the new setting `go.languageServerExperimentalFeatures` to opt-in to try new features like Code Completion and Formatting from the language server that might not be feature complete yet. 
@@ -124,7 +124,7 @@ An alternative of golint is [revive](https://github.com/mgechev/revive). It is e
 To configure revive, use:
 
 ```javascript
-  "go.lintFlags": ["-exclude=vendor/...", "-config=${workspaceRoot}/config.toml"]
+  "go.lintFlags": ["-exclude=vendor/...", "-config=${workspaceFolder}/config.toml"]
 ```
 
 Finally, the result of those linters will show right in the code (locations with suggestions will be underlined),
@@ -151,7 +151,7 @@ In addition to integrated editing features, the extension also provides several 
 * `Go: Fill Struct` Fills struct literal with default values
 * `Go: Run on Go Playground` Upload the current selection or file to the Go Playground
 
-You can access all of the above commands from the command pallet (`Cmd+Shift+P` or `Ctrl+Shift+P`).
+You can access all of the above commands from the command palette (`Cmd+Shift+P` or `Ctrl+Shift+P`).
 
 Few of these are available in the editor context menu as an experimental feature as well. To control which of these commands show up in the editor context menu, update the setting `go.editorContextMenuCommands`.
 
@@ -179,6 +179,16 @@ Read more at [Building, Debugging and Sideloading the extension in Visual Studio
 
 This extension uses a host of Go tools to provide the various rich features. These tools are installed in your GOPATH by default. If you wish to have the extension use a separate GOPATH for its tools, provide the desired location in the setting `go.toolsGopath`. Read more about this and the tools at [Go tools that the Go extension depends on](https://github.com/Microsoft/vscode-go/wiki/Go-tools-that-the-Go-extension-depends-on).
 
+## Contributing
+
+This project welcomes contributions and suggestions. Please go through our [Contributing Guide](https://github.com/Microsoft/vscode-go/blob/master/CONTRIBUTING.md) 
+to learn how you can contribute. It also includes details on the Contributor License Agreement.
+
+## Code of Conduct
+
+This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
+For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
+contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
 ## License
 [MIT](LICENSE)

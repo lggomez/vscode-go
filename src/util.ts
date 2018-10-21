@@ -348,18 +348,18 @@ export function getToolsGopath(useCache: boolean = true): string {
 
 function resolveToolsGopath(): string {
 
-	let toolsGopathForWorkspace = vscode.workspace.getConfiguration('go')['toolsGopath'] || '';
+	let toolsGopathForWorkspace = substituteEnv(vscode.workspace.getConfiguration('go')['toolsGopath'] || '');
 
-	// In case of single root, use resolvePath to resolve ~ and ${workspaceRoot}
+	// In case of single root
 	if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length <= 1) {
 		return resolvePath(toolsGopathForWorkspace);
 	}
 
-	// In case of multi-root, resolve ~ and ignore ${workspaceRoot}
+	// In case of multi-root, resolve ~ and ${workspaceFolder}
 	if (toolsGopathForWorkspace.startsWith('~')) {
 		toolsGopathForWorkspace = path.join(os.homedir(), toolsGopathForWorkspace.substr(1));
 	}
-	if (toolsGopathForWorkspace && toolsGopathForWorkspace.trim() && !/\${workspaceRoot}/.test(toolsGopathForWorkspace)) {
+	if (toolsGopathForWorkspace && toolsGopathForWorkspace.trim() && !/\${workspaceFolder}|\${workspaceRoot}/.test(toolsGopathForWorkspace)) {
 		return toolsGopathForWorkspace;
 	}
 
@@ -374,7 +374,7 @@ function resolveToolsGopath(): string {
 }
 
 export function getBinPath(tool: string): string {
-	return getBinPathWithPreferredGopath(tool, tool === 'go' ? [] : [getToolsGopath(), getCurrentGoPath()], vscode.workspace.getConfiguration('go', null).get('alternateTools'));
+	return getBinPathWithPreferredGopath(tool, (tool === 'go' || tool === 'godoc') ? [] : [getToolsGopath(), getCurrentGoPath()], vscode.workspace.getConfiguration('go', null).get('alternateTools'));
 }
 
 export function getFileArchive(document: vscode.TextDocument): string {
@@ -406,6 +406,12 @@ export function getToolsEnvVars(): any {
 	}
 
 	return envVars;
+}
+
+export function substituteEnv(input: string): string {
+	return input.replace(/\${env:([^}]+)}/g, function (match, capture) {
+		return process.env[capture.trim()] || '';
+	});
 }
 
 export function getCurrentGoPath(workspaceUri?: vscode.Uri): string {
@@ -443,7 +449,7 @@ export function getCurrentGoPath(workspaceUri?: vscode.Uri): string {
 		}
 	}
 
-	const configGopath = config['gopath'] ? resolvePath(config['gopath'], currentRoot) : '';
+	let configGopath = config['gopath'] ? resolvePath(substituteEnv(config['gopath']), currentRoot) : '';
 	return inferredGopath ? inferredGopath : (configGopath || process.env['GOPATH']);
 }
 
@@ -502,21 +508,21 @@ export function timeout(millis): Promise<void> {
 }
 
 /**
- * Exapnds ~ to homedir in non-Windows platform and resolves ${workspaceRoot}
+ * Exapnds ~ to homedir in non-Windows platform and resolves ${workspaceFolder} or ${workspaceRoot}
  */
-export function resolvePath(inputPath: string, workspaceRoot?: string): string {
+export function resolvePath(inputPath: string, workspaceFolder?: string): string {
 	if (!inputPath || !inputPath.trim()) return inputPath;
 
-	if (!workspaceRoot && vscode.workspace.workspaceFolders) {
+	if (!workspaceFolder && vscode.workspace.workspaceFolders) {
 		if (vscode.workspace.workspaceFolders.length === 1) {
-			workspaceRoot = vscode.workspace.rootPath;
+			workspaceFolder = vscode.workspace.rootPath;
 		} else if (vscode.window.activeTextEditor && vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri)) {
-			workspaceRoot = vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri).uri.fsPath;
+			workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri).uri.fsPath;
 		}
 	}
 
-	if (workspaceRoot) {
-		inputPath = inputPath.replace(/\${workspaceRoot}/g, workspaceRoot).replace(/\${workspaceFolder}/g, workspaceRoot);
+	if (workspaceFolder) {
+		inputPath = inputPath.replace(/\${workspaceFolder}|\${workspaceRoot}/g, workspaceFolder);
 	}
 	return resolveHomeDir(inputPath);
 }
@@ -762,7 +768,7 @@ export function handleDiagnosticErrors(document: vscode.TextDocument, errors: IC
 			warningDiagnosticCollection.set(fileUri, newWarnings);
 		}
 	});
-};
+}
 
 
 function mapSeverityToVSCodeSeverity(sev: string): vscode.DiagnosticSeverity {
@@ -890,4 +896,3 @@ export function cleanupTempDir() {
 	}
 	tmpDir = undefined;
 }
-

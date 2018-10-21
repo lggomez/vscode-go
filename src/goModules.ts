@@ -1,7 +1,9 @@
-import { getBinPath, getToolsEnvVars, getGoVersion } from './util';
+import { getBinPath, getGoVersion, sendTelemetryEvent, getToolsEnvVars } from './util';
 import path = require('path');
 import cp = require('child_process');
 import vscode = require('vscode');
+import { getFromGlobalState, updateGlobalState } from './stateUtils';
+import { installTools } from './goInstallTools';
 
 function containsModFile(folderPath: string): Promise<boolean> {
 	let goExecutable = getBinPath('go');
@@ -20,7 +22,7 @@ function containsModFile(folderPath: string): Promise<boolean> {
 	});
 }
 const workspaceModCache = new Map<string, boolean>();
-const packageModCache = new Map<string, string>();
+const packageModCache = new Map<string, boolean>();
 
 export function isModSupported(fileuri: vscode.Uri): Promise<boolean> {
 	return getGoVersion().then(value => {
@@ -34,10 +36,23 @@ export function isModSupported(fileuri: vscode.Uri): Promise<boolean> {
 		}
 		const pkgPath = path.dirname(fileuri.fsPath);
 		if (packageModCache.get(pkgPath)) {
+			if (workspaceFolder && pkgPath === workspaceFolder.uri.fsPath) {
+				workspaceModCache.set(workspaceFolder.uri.fsPath, true);
+				logModuleUsage(true);
+			} else {
+				logModuleUsage(false);
+			}
 			return true;
 		}
 		return containsModFile(pkgPath).then(result => {
-			workspaceModCache.set(pkgPath, result);
+			packageModCache.set(pkgPath, result);
+			if (result) {
+				const goConfig = vscode.workspace.getConfiguration('go', fileuri);
+				if (goConfig['inferGopath'] === true) {
+					goConfig.update('inferGopath', false, vscode.ConfigurationTarget.WorkspaceFolder);
+					alertDisablingInferGopath();
+				}
+			}
 			return result;
 		});
 	});
@@ -47,41 +62,103 @@ export function updateWorkspaceModCache() {
 	if (!vscode.workspace.workspaceFolders) {
 		return;
 	}
-	vscode.workspace.workspaceFolders.forEach(folder => {
-		containsModFile(folder.uri.fragment).then(result => {
+	let inferGopathUpdated = false;
+	const promises = vscode.workspace.workspaceFolders.map(folder => {
+		return containsModFile(folder.uri.fsPath).then(result => {
 			workspaceModCache.set(folder.uri.fsPath, result);
+			if (result) {
+				logModuleUsage(true);
+				const goConfig = vscode.workspace.getConfiguration('go', folder.uri);
+				if (goConfig['inferGopath'] === true) {
+					return goConfig.update('inferGopath', false, vscode.ConfigurationTarget.WorkspaceFolder)
+						.then(() => inferGopathUpdated = true);
+				}
+			}
 		});
+	});
+	Promise.all(promises).then(() => {
+		if (inferGopathUpdated) {
+			alertDisablingInferGopath();
+		}
 	});
 }
 
-// export function getModulePackages(workDir: string): Promise<Map<string, string>> {
-// 	let goRuntimePath = getBinPath('go');
+function alertDisablingInferGopath() {
+	vscode.window.showInformationMessage('The "inferGopath" setting is disabled for this workspace because Go modules are being used.');
+}
 
-// 	if (!goRuntimePath) {
-// 		vscode.window.showInformationMessage('Cannot find "go" binary. Update PATH or GOROOT appropriately');
-// 		return Promise.resolve(null);
-// 	}
-// 	return new Promise<Map<string, string>>((resolve, reject) => {
-// 		let childProcess = cp.spawn(goRuntimePath, ['list', '-f', '{{.Name}};{{.ImportPath}}', 'all'], {
-// 			cwd: workDir,
-// 			env: getToolsEnvVars()
-// 		});
-// 		let chunks = [];
-// 		childProcess.stdout.on('data', (stdout) => {
-// 			chunks.push(stdout);
-// 		});
+function logModuleUsage(atroot: boolean) {
+	/* __GDPR__
+		"modules" : {
+			"atroot" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+		}
+	*/
+	sendTelemetryEvent('modules', {
+		atroot: atroot ? 'true' : 'false'
+	});
+}
 
-// 		childProcess.on('close', (status) => {
-// 			let pkgs = new Map<string, string>();
-// 			let output = chunks.join('').toString();
+const promptedToolsForCurrentSession = new Set<string>();
+export function promptToUpdateToolForModules(tool: string, promptMsg: string) {
+	if (promptedToolsForCurrentSession.has(tool)) {
+		return;
+	}
+	const promptedToolsForModules = getFromGlobalState('promptedToolsForModules', {});
+	if (promptedToolsForModules[tool]) {
+		return;
+	}
+	vscode.window.showInformationMessage(
+		promptMsg,
+		'Update',
+		'Later',
+		`Don't show again`)
+		.then(selected => {
+			switch (selected) {
+				case 'Update':
+					installTools([tool]);
+					promptedToolsForModules[tool] = true;
+					updateGlobalState('promptedToolsForModules', promptedToolsForModules);
+					break;
+				case `Don't show again`:
+					promptedToolsForModules[tool] = true;
+					updateGlobalState('promptedToolsForModules', promptedToolsForModules);
+					break;
+				case 'Later':
+				default:
+					promptedToolsForCurrentSession.add(tool);
+					break;
+			}
+		});
+}
 
-// 			output.split('\n').forEach((pkgDetail) => {
-// 				if (!pkgDetail || !pkgDetail.trim() || pkgDetail.indexOf(';') === -1) return;
-// 				let [pkgName, pkgPath] = pkgDetail.trim().split(';');
-// 				pkgs.set(pkgPath, pkgName);
-// 			});
+const folderToPackageMapping: { [key: string]: string } = {};
+export function getCurrentPackage(cwd: string): Promise<string> {
+	if (folderToPackageMapping[cwd]) {
+		return Promise.resolve(folderToPackageMapping[cwd]);
+	}
 
-// 			resolve(pkgs);
-// 		});
-// 	});
-// }
+	let goRuntimePath = getBinPath('go');
+
+	if (!goRuntimePath) {
+		vscode.window.showInformationMessage('Cannot find "go" binary. Update PATH or GOROOT appropriately');
+		return Promise.resolve(null);
+	}
+	return new Promise<string>(resolve => {
+		let childProcess = cp.spawn(goRuntimePath, ['list'], { cwd, env: getToolsEnvVars() });
+		let chunks = [];
+		childProcess.stdout.on('data', (stdout) => {
+			chunks.push(stdout);
+		});
+
+		childProcess.on('close', () => {
+			// Ignore lines that are empty or those that have logs about updating the module cache
+			let pkgs = chunks.join('').toString().split('\n').filter(line => line && line.indexOf(' ') === -1);
+			if (pkgs.length !== 1) {
+				resolve();
+				return;
+			}
+			folderToPackageMapping[cwd] = pkgs[0];
+			resolve(pkgs[0]);
+		});
+	});
+}

@@ -15,14 +15,20 @@ import { getTextEditForAddImport } from './goImport';
 import { getImportablePackages } from './goPackages';
 import { isModSupported } from './goModules';
 
-function vscodeKindFromGoCodeClass(kind: string): vscode.CompletionItemKind {
+function vscodeKindFromGoCodeClass(kind: string, type: string): vscode.CompletionItemKind {
 	switch (kind) {
 		case 'const':
 			return vscode.CompletionItemKind.Constant;
 		case 'package':
 			return vscode.CompletionItemKind.Module;
 		case 'type':
-			return vscode.CompletionItemKind.Class;
+			switch (type) {
+				case 'struct':
+					return vscode.CompletionItemKind.Class;
+				case 'interface':
+					return vscode.CompletionItemKind.Interface;
+			}
+			return vscode.CompletionItemKind.Struct;
 		case 'func':
 			return vscode.CompletionItemKind.Function;
 		case 'var':
@@ -57,13 +63,21 @@ export class GoCompletionItemProvider implements vscode.CompletionItemProvider {
 		this.globalState = globalState;
 	}
 
-	public provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): Thenable<vscode.CompletionItem[]> {
-		return this.provideCompletionItemsInternal(document, position, token, vscode.workspace.getConfiguration('go', document.uri));
+	public provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): Thenable<vscode.CompletionList> {
+		return this.provideCompletionItemsInternal(document, position, token, vscode.workspace.getConfiguration('go', document.uri)).then(result => {
+			if (!result) {
+				return new vscode.CompletionList([], false);
+			}
+			if (Array.isArray(result)) {
+				return new vscode.CompletionList(result, false);
+			}
+			return result;
+		});
 	}
 
-	public provideCompletionItemsInternal(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, config: vscode.WorkspaceConfiguration): Thenable<vscode.CompletionItem[]> {
+	public provideCompletionItemsInternal(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, config: vscode.WorkspaceConfiguration): Thenable<vscode.CompletionItem[] | vscode.CompletionList> {
 		return this.ensureGoCodeConfigured(document.uri).then(() => {
-			return new Promise<vscode.CompletionItem[]>((resolve, reject) => {
+			return new Promise<vscode.CompletionItem[] | vscode.CompletionList>((resolve, reject) => {
 				let filename = document.fileName;
 				let lineText = document.lineAt(position.line).text;
 				let lineTillCurrentPosition = lineText.substr(0, position.character);
@@ -75,7 +89,7 @@ export class GoCompletionItemProvider implements vscode.CompletionItemProvider {
 					let memberType = nextLine.match(exportedMemberRegex);
 					let suggestionItem: vscode.CompletionItem;
 					if (memberType && memberType.length === 4) {
-						suggestionItem = new vscode.CompletionItem(memberType[3], vscodeKindFromGoCodeClass(memberType[1]));
+						suggestionItem = new vscode.CompletionItem(memberType[3], vscodeKindFromGoCodeClass(memberType[1], ''));
 					}
 					return resolve(suggestionItem ? [suggestionItem] : []);
 				}
@@ -155,7 +169,7 @@ export class GoCompletionItemProvider implements vscode.CompletionItemProvider {
 								};
 								suggestions.push(item);
 							});
-							resolve(suggestions);
+							resolve(new vscode.CompletionList(suggestions, true));
 						}
 					}
 					resolve(suggestions);
@@ -166,18 +180,14 @@ export class GoCompletionItemProvider implements vscode.CompletionItemProvider {
 
 	private runGoCode(document: vscode.TextDocument, filename: string, inputText: string, offset: number, inString: boolean, position: vscode.Position, lineText: string, currentWord: string, includeUnimportedPkgs: boolean, config: vscode.WorkspaceConfiguration): Thenable<vscode.CompletionItem[]> {
 		return new Promise<vscode.CompletionItem[]>((resolve, reject) => {
-			// let gocodeName = this.isGoMod ? 'gocode-gomod' : 'gocode';
-			let gocodeName = 'gocode';
+			let gocodeName = this.isGoMod ? 'gocode-gomod' : 'gocode';
 			let gocode = getBinPath(gocodeName);
 			if (!path.isAbsolute(gocode)) {
 				promptForMissingTool(gocodeName);
 				return reject();
 			}
 
-			// Unset GOOS and GOARCH for the `gocode` process to ensure that GOHOSTOS and GOHOSTARCH
-			// are used as the target operating system and architecture. `gocode` is unable to provide
-			// autocompletion when the Go environment is configured for cross compilation.
-			let env = Object.assign({}, getToolsEnvVars(), { GOOS: '', GOARCH: '' });
+			let env = getToolsEnvVars();
 			let stdout = '';
 			let stderr = '';
 
@@ -219,7 +229,7 @@ export class GoCompletionItemProvider implements vscode.CompletionItemProvider {
 						for (let suggest of results[1]) {
 							if (inString && suggest.class !== 'import') continue;
 							let item = new vscode.CompletionItem(suggest.name);
-							item.kind = vscodeKindFromGoCodeClass(suggest.class);
+							item.kind = vscodeKindFromGoCodeClass(suggest.class, suggest.type);
 							item.detail = suggest.type;
 							if (inString && suggest.class === 'import') {
 								item.textEdit = new vscode.TextEdit(
@@ -292,12 +302,13 @@ export class GoCompletionItemProvider implements vscode.CompletionItemProvider {
 							item.sortText = 'a';
 							suggestions.push(item);
 							suggestionSet.add(item.label);
-						};
+						}
 					}
 
 					// Add importable packages matching currentword to suggestions
-					let importablePkgs = includeUnimportedPkgs ? this.getMatchingPackages(document, currentWord, suggestionSet) : [];
-					suggestions = suggestions.concat(importablePkgs);
+					if (includeUnimportedPkgs) {
+						suggestions = suggestions.concat(this.getMatchingPackages(document, currentWord, suggestionSet));
+					}
 
 					// 'Smart Snippet' for package clause
 					// TODO: Factor this out into a general mechanism

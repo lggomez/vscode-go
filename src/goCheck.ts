@@ -7,10 +7,9 @@
 
 import vscode = require('vscode');
 import path = require('path');
-import os = require('os');
-import { getCoverage } from './goCover';
+import { applyCodeCoverageToAllEditors } from './goCover';
 import { outputChannel, diagnosticsStatusBarItem } from './goStatus';
-import { goTest } from './testUtils';
+import { goTest, TestConfig } from './testUtils';
 import { ICheckResult, getBinPath, getTempFilePath } from './util';
 import { goLint } from './goLint';
 import { goVet } from './goVet';
@@ -61,6 +60,13 @@ export function check(fileUri: vscode.Uri, goConfig: vscode.WorkspaceConfigurati
 
 	let testPromise: Thenable<boolean>;
 	let tmpCoverPath;
+	let testConfig: TestConfig = {
+		goConfig: goConfig,
+		dir: cwd,
+		flags: [],
+		background: true
+	};
+
 	let runTest = () => {
 		if (testPromise) {
 			return testPromise;
@@ -68,17 +74,16 @@ export function check(fileUri: vscode.Uri, goConfig: vscode.WorkspaceConfigurati
 
 		let buildFlags = goConfig['testFlags'] || goConfig['buildFlags'] || [];
 
-		let args = [...buildFlags];
 		if (goConfig['coverOnSave']) {
 			tmpCoverPath = getTempFilePath('go-code-cover');
-			args = ['-coverprofile=' + tmpCoverPath, ...buildFlags];
+			testConfig.flags = ['-coverprofile=' + tmpCoverPath, ...buildFlags];
+		} else {
+			testConfig.flags = [...buildFlags];
 		}
 
-		testPromise = goTest({
-			goConfig: goConfig,
-			dir: cwd,
-			flags: args,
-			background: true
+		testPromise = isModSupported(fileUri).then(isMod => {
+			testConfig.isMod = isMod;
+			return goTest(testConfig);
 		});
 		return testPromise;
 	};
@@ -103,7 +108,7 @@ export function check(fileUri: vscode.Uri, goConfig: vscode.WorkspaceConfigurati
 	}
 
 	if (!!goConfig['lintOnSave'] && goConfig['lintOnSave'] !== 'off') {
-		runningToolsPromises.push(goLint(fileUri, goConfig, goConfig['lintOnSave'] === 'workspace'));
+		runningToolsPromises.push(goLint(fileUri, goConfig, (goConfig['lintOnSave'])));
 	}
 
 	if (!!goConfig['vetOnSave'] && goConfig['vetOnSave'] !== 'off') {
@@ -116,7 +121,7 @@ export function check(fileUri: vscode.Uri, goConfig: vscode.WorkspaceConfigurati
 				return [];
 			}
 			// FIXME: it's not obvious that tmpCoverPath comes from runTest()
-			return getCoverage(tmpCoverPath);
+			return applyCodeCoverageToAllEditors(tmpCoverPath, testConfig.dir);
 		});
 	}
 

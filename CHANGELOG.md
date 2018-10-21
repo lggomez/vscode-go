@@ -1,24 +1,98 @@
-## 0.6.90 - Coming Soon
+## 0.6.93 - 18th October, 2018
 
-* [Bianca Rosa de Mendonça @biancarosa](https://github.com/biancarosa)
+Fix for issue with installing/updating tools when using the `Go: Install/Update Tools` command.
+[Bug 2024](https://github.com/Microsoft/vscode-go/issues/1874) fixed by [Kaarthik Rao Bekal Radhakrishna (@karthikraobr)](https://github.com/karthikraobr) and [Ramya Rao (@ramya-rao-a)](https://github.com/ramya-rao-a)
+
+## 0.6.92 - 17th October, 2018
+
+* [Logan (@brainsnail)](https://github.com/brainsnail)
+    * Add option `file` to `go.lintOnSave` setting to enable linting just the current file instead of package/workspace on file save. [Feature Request 1931](https://github.com/Microsoft/vscode-go/issues/1931) implemented with [PR 1965](https://github.com/Microsoft/vscode-go/pull/1965)
+
+* [饺子w (@eternal-flame-AD)](https://github.com/eternal-flame-AD)
+    * Support auto-completion during cross-compilation. Fixes [Bug 1874](https://github.com/Microsoft/vscode-go/issues/1874) with [PR 2015](https://github.com/Microsoft/vscode-go/pull/2015)
+
+* [Ralph Schmieder (@rschmied)](https://github.com/rschmied)
+    * Enable the use of `args` in test flags to pass arguments to tests. Fixes [Bug 1534](https://github.com/Microsoft/vscode-go/issues/1534) with [PR 1976](https://github.com/Microsoft/vscode-go/pull/1976)
+
+* [Tobiasz Heller (@nephe)](https://github.com/nephe)
+    * New snippet for `select` statements. [PR 2004](https://github.com/Microsoft/vscode-go/pull/2004)
+
+* [Vimal Kumar (@vimak78)](https://github.com/vimak78)
+    * Include out of the box commands for Go to definition, implementation and symbol in the `Go: Show All Commands` feature. [Feature Request 1822](https://github.com/Microsoft/vscode-go/issues/1822) implmented with [PR 1952](https://github.com/Microsoft/vscode-go/pull/1952)
+
+* [Cezar Sá Espinola (@cezarsa)](https://github.com/cezarsa)
+    * Use different icons for structs, interfaces and types. [PR 1961](https://github.com/Microsoft/vscode-go/pull/1961)
+
+* [Kaarthik Rao Bekal Radhakrishna (@karthikraobr)](https://github.com/karthikraobr)
+    * Use the new import path for `golint`. Fixes [Bug 1997](https://github.com/Microsoft/vscode-go/issues/1997) with [PR 1998](https://github.com/Microsoft/vscode-go/pull/1998)
+
+* [ShowerYing (@showerying)](https://github.com/showerying), [Ramya Rao (@ramya-rao-a)](https://github.com/ramya-rao-a)
+    * Remove `godoc` from the list of installable Go tools as it doesnt support CLI mode anymore. Use `godoc` binary which is shipped as part of the Go distribution instead.
+
+* [Jay R. Wren (@jrwren)](https://github.com/jrwren)
+    * Fix the bug where the forks of `gocode` & `godef` failed to install when user has multiple GOPATH. Fixes [Bug 1966](https://github.com/Microsoft/vscode-go/issues/1966) with [PR 1988](https://github.com/Microsoft/vscode-go/pull/1988)
+
+* [Bradley Weston (@bweston92)](https://github.com/bweston92)
+    * Include bazel option in `go.gocodePackageLookupMode` setting. Note: This only applies when using nsf/gocode. Latest versions of the Go extension uses mdempsky/gocode by default. [PR 1908](https://github.com/Microsoft/vscode-go/pull/1908)
+
+* [Ramya Rao (@ramya-rao-a)](https://github.com/ramya-rao-a)
+    * Fix the regression introduced in the previous update where the testify suites arent being indentified as tests by the codelens unless `go.gotoSymbol.includeImports` was enabled.
+    * Fix the regression where auto-completions are messed up when multiple packages match with the one being used. Fixes [Bug 2011](https://github.com/Microsoft/vscode-go/issues/2011) with [commit d789de0f](https://github.com/Microsoft/vscode-go/commit/d789de0f9561a1c9aa979a145cb64bcbfbe185cf)
+
+Documentation Updates
+
+* [@chiijlaw](https://github.com/chiijlaw)
+* [Miguel Carvajal (@krvajal)](https://github.com/krvajal)
+* [Forrest Cahoon (@forrcaho)](https://github.com/forrcaho)
+
+Engineering Updates
+
+* [@wachino](https://github.com/wachino)
+    * Fix failing tests with [PR 2016](https://github.com/Microsoft/vscode-go/pull/2016)
+
+* [Nguyen Long Nhat (@torn4dom4n)](https://github.com/torn4dom4n)
+    * Replace the use of deprecated `$workspaceRoot` with `$workspaceFolder`. [PR 1977](https://github.com/Microsoft/vscode-go/pull/1977)
+
+
+
+## 0.6.91 - 10th October, 2018
+
+* [Mathias Griffe (@Mathiasgr)](https://github.com/MathiasGr)
+    * Fix the regression introduced in the previous update where the testify suites arent being indentified as tests by the codelens. [Bug 1968](https://github.com/Microsoft/vscode-go/issues/1968) fixed with [PR 1969](https://github.com/Microsoft/vscode-go/pull/1969)
+    
+* [Nuruddin Ashr (@uudashr)](https://github.com/uudashr) and [Alec Thomas (@alecthomas)](https://github.com/alecthomas) 
+    * Improve the `iferr` snippet. [PR 1980](https://github.com/Microsoft/vscode-go/pull/1980) fixes [Bug 1962](https://github.com/Microsoft/vscode-go/issues/1962)
+
+* [Ramya Rao (@ramya-rao-a)](https://github.com/ramya-rao-a)
+    * Fix the bug where code coverage is not displayed when using Go modules. [Bug 1927](https://github.com/Microsoft/vscode-go/issues/1927)
+    * Fix the bug where file paths in the test output are not clickable when using Go modules. [Bug 1973](https://github.com/Microsoft/vscode-go/issues/1973)
+    * Dont display the `Analysis Tools Missing` warning for the forks of `godef` and `gocode`. They are needed only when using Go modules and there are prompts to install them when the extension detects the use of modules.
+    
+
+## 0.6.90 - 3rd October, 2018
+
+* [Rebecca Stambler (@stamblerre)](https://github.com/stamblerre)
+    * Use of forks for the tools `godef` and `gocode` to provide `Go to definition` and `Auto-completion` features respectively when using Go modules. The binaries installed from these forks will have the suffix `-gomod` and will only be used when you use Go modules.
+
+* [Bianca Rosa de Mendonça (@biancarosa)](https://github.com/biancarosa)
     * New commands `Go: Benchmark File`, `Go: Benchmark Package` and codelens to run all the benchmarks in current file & package respectively. [Feature Request 1522](https://github.com/Microsoft/vscode-go/issues/1522) with [PR 1898](https://github.com/Microsoft/vscode-go/pull/1898) & [PR 1899](https://github.com/Microsoft/vscode-go/pull/1899)
 
-* [Jeffrey Bean @jeffbean](https://github.com/jeffbean)
+* [Jeffrey Bean (@jeffbean)](https://github.com/jeffbean)
     * New setting `go.generateTestsFlags` to provide flags for the `gotests` tool when generating tests. [PR 1841](https://github.com/Microsoft/vscode-go/pull/1841)
     
-* [Johan Lejdung @johan-lejdung](https://github.com/johan-lejdung)
+* [Johan Lejdung (@johan-lejdung)](https://github.com/johan-lejdung)
     * New setting `go.testTags` to be used for running tests. This way, you can use the existing `go.buildTags` for compiling and a different set of tags for running tests. [Feature Request 1842](https://github.com/Microsoft/vscode-go/issues/1842) implemented with [PR 1877](https://github.com/Microsoft/vscode-go/pull/1877)
 
-* [Ryan Gurney @ragurney](https://github.com/ragurney)
+* [Ryan Gurney (@ragurney)](https://github.com/ragurney)
     * Skip the blank identifiers in file outline. [Bug 1889](https://github.com/Microsoft/vscode-go/issues/1889) fixed with [PR 1893](https://github.com/Microsoft/vscode-go/pull/1893)
 
-* [Benas Svipas @svipben](https://github.com/svipben)
+* [Benas Svipas (@svipben)](https://github.com/svipben)
     * Fix accessibility issues with the `Analysis Tools Missing` button in the status bar. [PR 1922](https://github.com/Microsoft/vscode-go/pull/1922)
 
-* [Alec Thomas @alecthomas](https://github.com/alecthomas)
+* [Alec Thomas (@alecthomas)](https://github.com/alecthomas)
     * Improve snippets for `iferr` and `forr` i.e  "if err ..." the "for range". [Feature Request 1920](https://github.com/Microsoft/vscode-go/issues/1920) implemented with [PR 1924](https://github.com/Microsoft/vscode-go/pull/1924)
 
-* [Charles Kenney @Charliekenney23](https://github.com/Charliekenney23)
+* [Charles Kenney (@Charliekenney23)](https://github.com/Charliekenney23)
     * Create new tmp directory for each session to avoid insecure use of the temporary files created by the extension. Fixes [Bug 1905](https://github.com/Microsoft/vscode-go/issues/1905) with [PR 1912](https://github.com/Microsoft/vscode-go/pull/1912)
 
 * [Shreyas Karnik (@shreyu86)](https://github.com/shreyu86)
@@ -28,7 +102,9 @@
     * Use random port instead of hard-coded 2345 when running delve. Fixes [Bug 1906](https://github.com/Microsoft/vscode-go/issues/1906)
     * Fix issue where tests using the check package cannot be run using the `Go: Test File` command. [Bug 1911](https://github.com/Microsoft/vscode-go/issues/1911)
     * Disable module support when installing the Go tools. Fixes [Bug 1919](https://github.com/Microsoft/vscode-go/issues/1919)
-    * Use version 2 of delve apis by default instead of version 1. [Feature Request 1876](https://github.com/Microsoft/vscode-go/issues/1876)
+    * Use version 2 of delve apis by default instead of version 1. Replace existing `useApiV1` setting/configuration with `apiVersion`. [Feature Request 1876](https://github.com/Microsoft/vscode-go/issues/1876)
+    * Prompt to update `gogetdoc` and `gopkgs` if using Go modules.
+    * Disable `go.inferGopath` in workspace settings when using Go modules automatically.
     * Add support for the below features when using Go modules
         * `Go: Add Import` command that gives you a list of importable packages to add to the import block of current file
         * `Go: Browse Packages` command that lets you browse available packages and their files
