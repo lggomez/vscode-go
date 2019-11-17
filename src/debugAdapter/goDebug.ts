@@ -655,7 +655,7 @@ class Delve {
 	}
 }
 
-class GoDebugSession extends LoggingDebugSession {
+export class GoDebugSession extends LoggingDebugSession {
 
 	private variableHandles: Handles<DebugVariable>;
 	private breakpoints: Map<string, DebugBreakpoint[]>;
