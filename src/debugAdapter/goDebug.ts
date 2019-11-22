@@ -686,6 +686,7 @@ export class GoDebugSession extends LoggingDebugSession {
 
 	protected initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
 		log('InitializeRequest');
+		throw "asd";
 		// This debug adapter implements the configurationDoneRequest.
 		response.body.supportsConfigurationDoneRequest = true;
 		response.body.supportsSetVariable = true;
