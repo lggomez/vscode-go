@@ -5,24 +5,62 @@
 
 import * as assert from 'assert';
 import tsup = require('vscode-debugadapter-testsupport');
+import * as Path from 'path';
 //import {GoDebugSession} from '../goDebug';
 
-let dc: tsup.DebugClient;
+suite('Go Debug Adapter', () => {
+	let dc: tsup.DebugClient;
 
-setup( () => {
-	dc = new tsup.DebugClient('go', '../goDebug.js', 'go');
-	dc.defaultTimeout = 20000;
-    return dc.start();
-});
+	const PROJECT_ROOT = Path.join(__dirname, '../../../..');
+	const DATA_ROOT = Path.join(PROJECT_ROOT, 'test/fixtures/debug');
+	const PROJECT_OUTPUT = Path.join(__dirname, '../..');
+	const DEBUG_ADAPTER = Path.join(PROJECT_OUTPUT, 'debugAdapter/goDebug.js');
 
-teardown( () => dc.stop() );
+	setup( () => {
+		console.log('setup start');
+		dc = new tsup.DebugClient('go', DEBUG_ADAPTER, 'go', undefined, true);
+		dc.defaultTimeout = 20000;
+		let p = dc.start();
+		console.log('setup end');
+		return p;
+	});
 
-test('should run program to the end', () => {
-    return Promise.all([
-        dc.configurationSequence(),
-        dc.launch({ program: 'main/main.go' }),
-        dc.waitForEvent('terminated')
-    ]);
+	teardown( () => {
+		console.log('teardown');
+		dc.stop();
+	} );
+
+	suite('basic', () => {
+		test('unknown request should produce error', done => {
+			const err = new Error('does not report error on unknown request');
+			console.log('basic dc.send');
+			let r = dc.send('illegal_request');
+			
+			r.then(() => {
+				console.log('basic dc.then');
+				done(err);
+			}).catch(() => {
+				console.log('basic dc.catch');
+				done();
+			}).finally(() => {
+				console.log('basic dc.finally');
+				done(err);
+			});
+
+			console.log('basic end');
+		});
+	});
+
+	suite('launch', () => {
+		test('should run program to the end', () => {
+			const PROGRAM = Path.join(DATA_ROOT, 'main/main.go');
+			return Promise.all([
+				dc.configurationSequence(),
+				dc.launch({ program: PROGRAM }),
+				dc.waitForEvent('terminated')
+			]);
+		});
+	});
 });
 
 // test('should stop on entry', () => {
