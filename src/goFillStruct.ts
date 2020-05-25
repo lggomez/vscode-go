@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  * Copyright (C) Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See License.txt in the project root for license information.
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
  *--------------------------------------------------------*/
 
 'use strict';
@@ -8,7 +8,7 @@
 import cp = require('child_process');
 import vscode = require('vscode');
 import { promptForMissingTool } from './goInstallTools';
-import { byteOffsetAt, getBinPath, getFileArchive, getTimeoutConfiguration, getToolsEnvVars, killTree } from './util';
+import { byteOffsetAt, getBinPath, getFileArchive, getToolsEnvVars, makeMemoizedByteOffsetConverter, killTree, getTimeoutConfiguration } from './util';
 
 // Interface for the output from fillstruct
 interface GoFillStructOutput {
@@ -79,14 +79,15 @@ function execFillStruct(editor: vscode.TextEditor, args: string[]): Promise<void
 				}
 
 				const indent = '\t'.repeat(tabsCount);
+				const offsetConverter = makeMemoizedByteOffsetConverter(Buffer.from(editor.document.getText()));
 
 				editor
 					.edit((editBuilder) => {
 						output.forEach((structToFill) => {
 							const out = structToFill.code.replace(/\n/g, '\n' + indent);
 							const rangeToReplace = new vscode.Range(
-								editor.document.positionAt(structToFill.start),
-								editor.document.positionAt(structToFill.end)
+								editor.document.positionAt(offsetConverter(structToFill.start)),
+								editor.document.positionAt(offsetConverter(structToFill.end))
 							);
 							editBuilder.replace(rangeToReplace, out);
 						});

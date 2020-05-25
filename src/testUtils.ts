@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  * Copyright (C) Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See License.txt in the project root for license information.
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
  *--------------------------------------------------------*/
 import cp = require('child_process');
 import path = require('path');
@@ -18,11 +18,11 @@ import {
 	getGoVersion,
 	getTempFilePath,
 	getToolsEnvVars,
+	killTree,
 	LineBuffer,
 	resolvePath
 } from './util';
 
-const sendSignal = 'SIGKILL';
 const outputChannel = vscode.window.createOutputChannel('Go Tests');
 const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
 statusBarItem.command = 'go.test.cancel';
@@ -122,24 +122,28 @@ export function getTestTags(goConfig: vscode.WorkspaceConfiguration): string {
  * @param the URI of a Go source file.
  * @return test function symbols for the source file.
  */
-export function getTestFunctions(
+export async function getTestFunctions(
 	doc: vscode.TextDocument,
 	token: vscode.CancellationToken
-): Thenable<vscode.DocumentSymbol[]> {
+): Promise<vscode.DocumentSymbol[] | undefined> {
 	const documentSymbolProvider = new GoDocumentSymbolProvider(true);
-	return documentSymbolProvider
-		.provideDocumentSymbols(doc, token)
-		.then((symbols) => symbols[0].children)
-		.then((symbols) => {
-			const testify = symbols.some(
-				(sym) => sym.kind === vscode.SymbolKind.Namespace && sym.name === '"github.com/stretchr/testify/suite"'
-			);
-			return symbols.filter(
-				(sym) =>
-					sym.kind === vscode.SymbolKind.Function &&
-					(testFuncRegex.test(sym.name) || (testify && testMethodRegex.test(sym.name)))
-			);
-		});
+	const symbols = await documentSymbolProvider.provideDocumentSymbols(doc, token);
+	if (!symbols || symbols.length === 0) {
+		return;
+	}
+	const symbol = symbols[0];
+	if (!symbol) {
+		return;
+	}
+	const children = symbol.children;
+	const testify = children.some(
+		(sym) => sym.kind === vscode.SymbolKind.Namespace && sym.name === '"github.com/stretchr/testify/suite"'
+	);
+	return children.filter(
+		(sym) =>
+			sym.kind === vscode.SymbolKind.Function &&
+			(testFuncRegex.test(sym.name) || (testify && testMethodRegex.test(sym.name)))
+	);
 }
 
 /**
@@ -202,17 +206,21 @@ export function findAllTestSuiteRuns(
  * @param the URI of a Go source file.
  * @return benchmark function symbols for the source file.
  */
-export function getBenchmarkFunctions(
+export async function getBenchmarkFunctions(
 	doc: vscode.TextDocument,
 	token: vscode.CancellationToken
-): Thenable<vscode.DocumentSymbol[]> {
+): Promise<vscode.DocumentSymbol[] | undefined> {
 	const documentSymbolProvider = new GoDocumentSymbolProvider();
-	return documentSymbolProvider
-		.provideDocumentSymbols(doc, token)
-		.then((symbols) => symbols[0].children)
-		.then((symbols) =>
-			symbols.filter((sym) => sym.kind === vscode.SymbolKind.Function && benchmarkRegex.test(sym.name))
-		);
+	const symbols = await documentSymbolProvider.provideDocumentSymbols(doc, token);
+	if (!symbols || symbols.length === 0) {
+		return;
+	}
+	const symbol = symbols[0];
+	if (!symbol) {
+		return;
+	}
+	const children = symbol.children;
+	return children.filter((sym) => sym.kind === vscode.SymbolKind.Function && benchmarkRegex.test(sym.name));
 }
 
 /**
@@ -372,14 +380,6 @@ export async function goTest(testconfig: TestConfig): Promise<boolean> {
 					outBuf.done();
 					errBuf.done();
 
-					if (code) {
-						outputChannel.appendLine(`Error: ${testType} failed.`);
-					} else if (signal === sendSignal) {
-						outputChannel.appendLine(`Error: ${testType} terminated by user.`);
-					} else {
-						outputChannel.appendLine(`Success: ${testType} passed.`);
-					}
-
 					const index = runningTestProcesses.indexOf(tp, 0);
 					if (index > -1) {
 						runningTestProcesses.splice(index, 1);
@@ -420,7 +420,7 @@ export function showTestOutput() {
 export function cancelRunningTests(): Thenable<boolean> {
 	return new Promise<boolean>((resolve, reject) => {
 		runningTestProcesses.forEach((tp) => {
-			tp.kill(sendSignal);
+			killTree(tp.pid);
 		});
 		// All processes are now dead. Empty the array to prepare for the next run.
 		runningTestProcesses.splice(0, runningTestProcesses.length);

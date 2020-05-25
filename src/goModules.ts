@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  * Copyright (C) Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See License.txt in the project root for license information.
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
  *--------------------------------------------------------*/
 
 'use strict';
@@ -9,10 +9,10 @@ import cp = require('child_process');
 import path = require('path');
 import vscode = require('vscode');
 import { installTools } from './goInstallTools';
+import { restartLanguageServer } from './goMain';
 import { envPath, fixDriveCasingInWindows } from './goPath';
 import { getTool } from './goTools';
 import { getFromGlobalState, updateGlobalState } from './stateUtils';
-import { sendTelemetryEventForModulesUsage } from './telemetry';
 import {
 	getBinPath,
 	getGoConfig,
@@ -109,7 +109,6 @@ function logModuleUsage() {
 		return;
 	}
 	moduleUsageLogged = true;
-	sendTelemetryEventForModulesUsage();
 }
 
 const promptedToolsForCurrentSession = new Set<string>();
@@ -137,22 +136,7 @@ export async function promptToUpdateToolForModules(
 			if (tool === 'switchFormatToolToGoimports') {
 				goConfig.update('formatTool', 'goimports', vscode.ConfigurationTarget.Global);
 			} else {
-				installTools([getTool(tool)], goVersion).then(() => {
-					if (tool === 'gopls') {
-						if (goConfig.get('useLanguageServer') === false) {
-							goConfig.update('useLanguageServer', true, vscode.ConfigurationTarget.Global);
-						}
-						if (goConfig.inspect('useLanguageServer').workspaceFolderValue === false) {
-							goConfig.update('useLanguageServer', true, vscode.ConfigurationTarget.WorkspaceFolder);
-						}
-						const reloadMsg = 'Reload VS Code window to enable the use of Go language server';
-						vscode.window.showInformationMessage(reloadMsg, 'Reload').then((selectedForReload) => {
-							if (selectedForReload === 'Reload') {
-								vscode.commands.executeCommand('workbench.action.reloadWindow');
-							}
-						});
-					}
-				});
+				await installTools([getTool(tool)], goVersion);
 			}
 			promptedToolsForModules[tool] = true;
 			updateGlobalState('promptedToolsForModules', promptedToolsForModules);
